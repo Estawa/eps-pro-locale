@@ -6,7 +6,7 @@ import {
   LayoutGrid, Home, RefreshCw, Archive, StickyNote, ThumbsUp, ThumbsDown, Table2, Sun, Moon, ImagePlus,
   Wrench, Timer, Play, Pause, RotateCcw, Flag, Phone, Upload, GraduationCap, Star, Pencil,
   FileText, Image as ImageIcon, Video, Paperclip, FolderPlus, Download, RotateCw, RotateCcw as RotateCcwIcon, Folder,
-  Table, Sigma
+  Table, Sigma, Lock
 } from "lucide-react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -1653,7 +1653,7 @@ function FicheEleve({ classe, eleve, updateEleve, updateClasse, onAnnotate, bibl
 }
 
 // ---------- Écran : Outils (liste) ----------
-function OutilsScreen({ onOpenOutil, onOpenEvaluations, onOpenEdt, onOpenAssistantRentree }) {
+function OutilsScreen({ onOpenOutil, onOpenEvaluations, onOpenEdt, onOpenAssistantRentree, onOpenChangerPin }) {
   return (
     <div style={{ padding: 18 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
@@ -1663,6 +1663,7 @@ function OutilsScreen({ onOpenOutil, onOpenEvaluations, onOpenEdt, onOpenAssista
         <QuickTile Icon={Table} label="Éditeur de tableau" onClick={onOpenEvaluations} tone="documents" />
         <QuickTile Icon={Calendar} label="Emploi du temps" onClick={onOpenEdt} tone="classes" />
         <QuickTile Icon={GraduationCap} label="Assistant de rentrée" onClick={onOpenAssistantRentree} tone="appel" />
+        <QuickTile Icon={Lock} label="Code d'accès" onClick={onOpenChangerPin} tone="trombi" />
       </div>
     </div>
   );
@@ -4360,10 +4361,90 @@ function ClasseCycleSheet({ classe }) {
 }
 
 // ---------- Écran de verrouillage PIN ----------
-function LockScreen({ onUnlock, lockPhoto, onChangePhoto, theme, onToggleTheme }) {
+// ---------- Écran : Changer le code d'accès ----------
+function ChangerPinScreen({ pinActuel, onChangePin, onBack }) {
+  const [etape, setEtape] = useState("verif"); // 'verif' | 'nouveau' | 'confirme'
+  const [saisie, setSaisie] = useState("");
+  const [nouveauPin, setNouveauPin] = useState("");
+  const [erreur, setErreur] = useState("");
+  const [succes, setSucces] = useState(false);
+
+  const digit = (d) => {
+    if (saisie.length >= 4) return;
+    const next = saisie + d;
+    setSaisie(next);
+    setErreur("");
+    if (next.length === 4) {
+      setTimeout(() => {
+        if (etape === "verif") {
+          if (next === pinActuel) { setEtape("nouveau"); setSaisie(""); }
+          else { setErreur("Code actuel incorrect."); setSaisie(""); }
+        } else if (etape === "nouveau") {
+          setNouveauPin(next);
+          setEtape("confirme");
+          setSaisie("");
+        } else if (etape === "confirme") {
+          if (next === nouveauPin) {
+            onChangePin(next);
+            setSucces(true);
+          } else {
+            setErreur("Les deux codes ne correspondent pas. Recommence.");
+            setEtape("nouveau");
+            setNouveauPin("");
+            setSaisie("");
+          }
+        }
+      }, 120);
+    }
+  };
+
+  const titres = { verif: "Code actuel", nouveau: "Nouveau code", confirme: "Confirme le nouveau code" };
+
+  if (succes) {
+    return (
+      <div style={{ padding: 30, textAlign: "center" }}>
+        <Check size={40} color={PRIMARY} style={{ marginBottom: 12 }} />
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Code d'accès modifié</div>
+        <div style={{ color: "var(--muted-soft)", fontSize: 13, marginBottom: 20 }}>Utilise ton nouveau code dès la prochaine ouverture.</div>
+        <button onClick={onBack} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          Retour
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 24, textAlign: "center" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 20 }}>{titres[etape]}</div>
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 20 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: i < saisie.length ? PRIMARY : "var(--faint)", border: erreur ? "1.5px solid #D1362B" : "none" }} />
+        ))}
+      </div>
+      {erreur && <div style={{ fontSize: 12, color: "var(--st-absent-c)", marginBottom: 14 }}>{erreur}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, maxWidth: 220, margin: "0 auto" }}>
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((d, i) => (
+          d === "" ? <div key={i} /> : (
+            <button
+              key={i}
+              onClick={() => d === "⌫" ? setSaisie(saisie.slice(0, -1)) : digit(d)}
+              style={{ width: 60, height: 60, borderRadius: "50%", border: `1px solid ${LINE}`, background: CARD, color: INK, fontSize: 18, fontWeight: 600, cursor: "pointer" }}
+            >
+              {d}
+            </button>
+          )
+        ))}
+      </div>
+      <button onClick={onBack} style={{ marginTop: 24, padding: "8px 0", border: "none", background: "none", color: "var(--muted-soft)", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+        Annuler
+      </button>
+    </div>
+  );
+}
+
+function LockScreen({ onUnlock, lockPhoto, onChangePhoto, theme, onToggleTheme, pinAttendu }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
-  const PIN_ATTENDU = "1234"; // démonstration — configurable dans la vraie version
 
   const digit = (d) => {
     if (pin.length >= 4) return;
@@ -4372,7 +4453,7 @@ function LockScreen({ onUnlock, lockPhoto, onChangePhoto, theme, onToggleTheme }
     setError(false);
     if (next.length === 4) {
       setTimeout(() => {
-        if (next === PIN_ATTENDU) onUnlock();
+        if (next === pinAttendu) onUnlock();
         else { setError(true); setPin(""); }
       }, 120);
     }
@@ -4440,6 +4521,7 @@ export default function EpsPro() {
   const [annotCible, setAnnotCible] = useState(null); // { classeId, eleveId, activite }
   const [theme, setTheme] = useState("clair");
   const [lockPhoto, setLockPhoto] = useState(null);
+  const [pinAcces, setPinAcces] = useState("1234");
   const [biblio, setBiblio] = useState({ documents: [], dossiers: [] });
   const [evaluations, setEvaluations] = useState([]);
   const [edt, setEdt] = useState({
@@ -4460,6 +4542,8 @@ export default function EpsPro() {
   React.useEffect(() => {
     let annule = false;
     (async () => {
+      const pinLocal = await idbLire("pinAcces");
+      if (pinLocal?.valeur) setPinAcces(pinLocal.valeur);
       const cles = ["classes", "biblio", "evaluations", "edt", "etablissement", "lockPhoto", "theme"];
       const locaux = await Promise.all(cles.map((c) => idbLire(c)));
       if (annule) return;
@@ -4485,6 +4569,11 @@ export default function EpsPro() {
   const sauvegarder = (cle, valeur) => {
     const maj = Date.now();
     idbEcrire(cle, { valeur, maj });
+  };
+
+  const changerPin = (nouveauPin) => {
+    idbEcrire("pinAcces", { valeur: nouveauPin, maj: Date.now() });
+    setPinAcces(nouveauPin);
   };
 
   React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("classes", classes), 400); return () => clearTimeout(t); }, [classes, pret]);
@@ -4580,6 +4669,9 @@ export default function EpsPro() {
   } else if (current?.screen === "assistantRentree") {
     title = "Assistant de rentrée";
     body = <AssistantRentreeScreen etablissement={etablissement} setEtablissement={setEtablissement} edt={edt} setEdt={setEdt} classes={classes} />;
+  } else if (current?.screen === "changerPin") {
+    title = "Code d'accès";
+    body = <ChangerPinScreen pinActuel={pinAcces} onChangePin={changerPin} onBack={pop} />;
   } else if (current?.screen === "outil") {
     title = current.params.id === "minuteur" ? "Minuteur" : current.params.id === "chrono" ? "Chronomètre" : "Bloc-note";
     body = current.params.id === "minuteur" ? <MinuteurScreen />
@@ -4590,7 +4682,7 @@ export default function EpsPro() {
       case "accueil": title = "Accueil"; body = <Accueil classes={classes} edt={edt} setEdt={setEdt} etablissement={etablissement} onOpenEdt={() => push("edt", {})} />; break;
       case "gestion": title = "Gestion de classe"; body = <GestionClasseScreen sousOnglet={sousOngletGestion} setSousOnglet={setSousOngletGestion} classes={classes} setClasses={setClasses} updateClasse={updateClasse} updateEleve={updateEleveIn} onOpenClass={(id) => push("classeDetail", { id })} onOpenEleve={(cid, eid) => push("fiche", { classeId: cid, eleveId: eid })} onAnnotate={(cid, eid, activite) => setAnnotCible({ classeId: cid, eleveId: eid, activite })} onVoirFicheCycle={(cid) => push("ficheCycle", { classeId: cid })} biblio={biblio} setBiblio={setBiblio} />; break;
       case "documents": title = "Documents"; body = <DocumentsScreen biblio={biblio} setBiblio={setBiblio} onSupprimerPhotoDeDispense={supprimerPhotoDeDispense} onOpenRecapDispenses={() => push("recapDispenses", {})} onOpenEvaluations={() => push("evaluations", {})} onOpenEvaluation={(id) => push("evaluationEditor", { id })} />; break;
-      case "outils": title = "Outils"; body = <OutilsScreen onOpenOutil={(id) => push("outil", { id })} onOpenEvaluations={() => push("evaluations", {})} onOpenEdt={() => push("edt", {})} onOpenAssistantRentree={() => push("assistantRentree", {})} />; break;
+      case "outils": title = "Outils"; body = <OutilsScreen onOpenOutil={(id) => push("outil", { id })} onOpenEvaluations={() => push("evaluations", {})} onOpenEdt={() => push("edt", {})} onOpenAssistantRentree={() => push("assistantRentree", {})} onOpenChangerPin={() => push("changerPin", {})} />; break;
       default: body = null;
     }
   }
@@ -4631,7 +4723,7 @@ export default function EpsPro() {
           <div style={{ fontSize: 12, opacity: 0.8 }}>Chargement de tes données…</div>
         </div>
       ) : locked ? (
-        <LockScreen onUnlock={() => setLocked(false)} lockPhoto={lockPhoto} onChangePhoto={setLockPhoto} theme={theme} onToggleTheme={toggleTheme} />
+        <LockScreen onUnlock={() => setLocked(false)} lockPhoto={lockPhoto} onChangePhoto={setLockPhoto} theme={theme} onToggleTheme={toggleTheme} pinAttendu={pinAcces} />
       ) : (
         <div className="eps-shell" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
           <nav className="eps-side-nav">
