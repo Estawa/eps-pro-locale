@@ -6,7 +6,7 @@ import {
   LayoutGrid, Home, RefreshCw, Archive, StickyNote, ThumbsUp, ThumbsDown, Table2, Sun, Moon, ImagePlus,
   Wrench, Timer, Play, Pause, RotateCcw, Flag, Phone, Upload, GraduationCap, Star, Pencil,
   FileText, Image as ImageIcon, Video, Paperclip, FolderPlus, Download, RotateCw, RotateCcw as RotateCcwIcon, Folder,
-  Table, Sigma, Lock
+  Table, Sigma, Lock, ExternalLink, Globe, Mail, HardDrive, Link2
 } from "lucide-react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -411,6 +411,81 @@ function QuickTile({ Icon, label, onClick, tone }) {
       <Icon size={22} />
       <span style={{ fontWeight: 700, fontSize: 14.5 }}>{label}</span>
     </button>
+  );
+}
+
+// ---------- Écran : Liens perso (ajoutés librement par l'utilisateur) ----------
+const CATEGORIES_LIENS = [
+  { value: "site", label: "Site internet", Icon: Globe },
+  { value: "email", label: "Boîte mail", Icon: Mail },
+  { value: "drive", label: "Drive / stockage", Icon: HardDrive },
+  { value: "autre", label: "Autre", Icon: Link2 },
+];
+
+function LiensPersoScreen({ liensPerso, setLiensPerso }) {
+  const [formOuvert, setFormOuvert] = useState(false);
+
+  const ajouterLien = ({ label, url, categorie }) => {
+    let urlFinale = url.trim();
+    if (categorie === "email") {
+      if (!/^mailto:/i.test(urlFinale)) urlFinale = `mailto:${urlFinale}`;
+    } else if (!/^https?:\/\//i.test(urlFinale)) {
+      urlFinale = `https://${urlFinale}`;
+    }
+    setLiensPerso([...(liensPerso || []), { id: uid(), label, url: urlFinale, categorie: categorie || "autre" }]);
+    setFormOuvert(false);
+  };
+
+  const supprimerLien = (id) => {
+    if (!confirm("Supprimer ce lien ?")) return;
+    setLiensPerso((liensPerso || []).filter((l) => l.id !== id));
+  };
+
+  return (
+    <div style={{ padding: 18 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-soft)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 12 }}>
+        Mes liens perso
+      </div>
+      {(!liensPerso || liensPerso.length === 0) && (
+        <div style={{ fontSize: 13, color: "var(--muted-soft)", marginBottom: 14 }}>Aucun lien ajouté pour l'instant.</div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+        {(liensPerso || []).map((l) => {
+          const cat = CATEGORIES_LIENS.find((c) => c.value === l.categorie) || CATEGORIES_LIENS[3];
+          const Icon = cat.Icon;
+          return (
+            <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, background: CARD, border: `1px solid ${LINE}`, borderRadius: 14, padding: "12px 14px" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: PRIMARY_SOFT, color: PRIMARY, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon size={17} />
+              </div>
+              <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textDecoration: "none", color: INK, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{l.label}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.url}</div>
+              </a>
+              <button onClick={() => supprimerLien(l.id)} style={{ border: "none", background: "none", color: "var(--st-absent-c)", cursor: "pointer", flexShrink: 0 }}>
+                <Trash2 size={18} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={() => setFormOuvert(true)} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: `1.5px dashed ${PRIMARY}`, background: "none", color: PRIMARY, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <Plus size={17} /> Ajouter un lien
+      </button>
+      {formOuvert && (
+        <FormModal
+          title="Nouveau lien"
+          fields={[
+            { key: "label", label: "Nom du lien", placeholder: "ex : Ma boîte mail", required: true },
+            { key: "categorie", label: "Type de lien", type: "select", default: "site", options: CATEGORIES_LIENS.map((c) => ({ value: c.value, label: c.label })) },
+            { key: "url", label: "Adresse (site, e-mail...)", placeholder: "ex : https://... ou nom@mail.com", required: true },
+          ]}
+          onClose={() => setFormOuvert(false)}
+          onSubmit={ajouterLien}
+          submitLabel="Ajouter le lien"
+        />
+      )}
+    </div>
   );
 }
 
@@ -4535,6 +4610,7 @@ export default function EpsPro() {
     historiqueAnnees: [],
   });
   const [etablissement, setEtablissement] = useState({ nom: "", anneeScolaire: "" });
+  const [liensPerso, setLiensPerso] = useState([]);
   const toggleTheme = () => setTheme((t) => (t === "clair" ? "sombre" : "clair"));
 
   const [pret, setPret] = useState(false);
@@ -4544,7 +4620,7 @@ export default function EpsPro() {
     (async () => {
       const pinLocal = await idbLire("pinAcces");
       if (pinLocal?.valeur) setPinAcces(pinLocal.valeur);
-      const cles = ["classes", "biblio", "evaluations", "edt", "etablissement", "lockPhoto", "theme"];
+      const cles = ["classes", "biblio", "evaluations", "edt", "etablissement", "lockPhoto", "theme", "liensPerso"];
       const locaux = await Promise.all(cles.map((c) => idbLire(c)));
       if (annule) return;
 
@@ -4561,6 +4637,7 @@ export default function EpsPro() {
       if (valeurs.etablissement) setEtablissement(valeurs.etablissement);
       if (valeurs.lockPhoto) setLockPhoto(valeurs.lockPhoto);
       if (valeurs.theme) setTheme(valeurs.theme);
+      if (valeurs.liensPerso) setLiensPerso(valeurs.liensPerso);
       setPret(true);
     })();
     return () => { annule = true; };
@@ -4583,6 +4660,7 @@ export default function EpsPro() {
   React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("etablissement", etablissement), 400); return () => clearTimeout(t); }, [etablissement, pret]);
   React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("lockPhoto", lockPhoto), 400); return () => clearTimeout(t); }, [lockPhoto, pret]);
   React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("theme", theme), 400); return () => clearTimeout(t); }, [theme, pret]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("liensPerso", liensPerso), 400); return () => clearTimeout(t); }, [liensPerso, pret]);
 
   const push = (screen, params = {}) => setNav([...nav, { screen, params }]);
   const pop = () => setNav(nav.slice(0, -1));
@@ -4683,6 +4761,7 @@ export default function EpsPro() {
       case "gestion": title = "Gestion de classe"; body = <GestionClasseScreen sousOnglet={sousOngletGestion} setSousOnglet={setSousOngletGestion} classes={classes} setClasses={setClasses} updateClasse={updateClasse} updateEleve={updateEleveIn} onOpenClass={(id) => push("classeDetail", { id })} onOpenEleve={(cid, eid) => push("fiche", { classeId: cid, eleveId: eid })} onAnnotate={(cid, eid, activite) => setAnnotCible({ classeId: cid, eleveId: eid, activite })} onVoirFicheCycle={(cid) => push("ficheCycle", { classeId: cid })} biblio={biblio} setBiblio={setBiblio} />; break;
       case "documents": title = "Documents"; body = <DocumentsScreen biblio={biblio} setBiblio={setBiblio} onSupprimerPhotoDeDispense={supprimerPhotoDeDispense} onOpenRecapDispenses={() => push("recapDispenses", {})} onOpenEvaluations={() => push("evaluations", {})} onOpenEvaluation={(id) => push("evaluationEditor", { id })} />; break;
       case "outils": title = "Outils"; body = <OutilsScreen onOpenOutil={(id) => push("outil", { id })} onOpenEvaluations={() => push("evaluations", {})} onOpenEdt={() => push("edt", {})} onOpenAssistantRentree={() => push("assistantRentree", {})} onOpenChangerPin={() => push("changerPin", {})} />; break;
+      case "liens": title = "Liens"; body = <LiensPersoScreen liensPerso={liensPerso} setLiensPerso={setLiensPerso} />; break;
       default: body = null;
     }
   }
@@ -4694,6 +4773,7 @@ export default function EpsPro() {
     { key: "gestion", Icon: Users, label: "Classes" },
     { key: "documents", Icon: FolderOpen, label: "Docs" },
     { key: "outils", Icon: Wrench, label: "Outils" },
+    { key: "liens", Icon: ExternalLink, label: "Liens" },
   ];
 
   return (
