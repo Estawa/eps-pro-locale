@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 import {
   Users, Camera, ClipboardCheck, UserCircle2, Plus, Trash2, ChevronLeft,
   Printer, X, Check, HeartPulse, UserX, Shirt, Calendar, FolderOpen,
   LayoutGrid, Home, RefreshCw, Archive, StickyNote, ThumbsUp, ThumbsDown, Table2, Sun, Moon, ImagePlus,
   Wrench, Timer, Play, Pause, RotateCcw, Flag, Phone, Upload, GraduationCap, Star, Pencil,
   FileText, Image as ImageIcon, Video, Paperclip, FolderPlus, Download, RotateCw, RotateCcw as RotateCcwIcon, Folder,
-  Table, Sigma, Lock, ExternalLink, Globe, Mail, HardDrive, Link2
+  Table, Sigma, ExternalLink, Lock, Globe, Mail, HardDrive, Link2
 } from "lucide-react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -53,6 +55,44 @@ async function idbEcrire(cle, valeur) {
     });
   } catch (e) {
     // Stockage indisponible (mode privé strict, etc.) : on continue sans bloquer l'appli.
+  }
+}
+
+// ---------- Synchronisation en ligne (Firebase / Firestore) ----------
+const firebaseConfig = {
+  apiKey: "AIzaSyAh2sS6lbXv1S_70fGqkTQXt8qjS-xl8hc",
+  authDomain: "eps-pro-1460c.firebaseapp.com",
+  projectId: "eps-pro-1460c",
+  storageBucket: "eps-pro-1460c.firebasestorage.app",
+  messagingSenderId: "651231276995",
+  appId: "1:651231276995:web:9a0a4bee757ffe4d6a1776",
+};
+let firestoreDb = null;
+try {
+  const firebaseApp = initializeApp(firebaseConfig);
+  firestoreDb = getFirestore(firebaseApp);
+} catch (e) {
+  firestoreDb = null;
+}
+
+async function cloudLire(codeProf, cle) {
+  if (!firestoreDb || !codeProf) return null;
+  try {
+    const ref = doc(firestoreDb, "profs", codeProf, "data", cle);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function cloudEcrire(codeProf, cle, valeur, maj) {
+  if (!firestoreDb || !codeProf) return;
+  try {
+    const ref = doc(firestoreDb, "profs", codeProf, "data", cle);
+    await setDoc(ref, { valeur, maj });
+  } catch (e) {
+    // Pas de réseau ou règles Firestore non prêtes : on reste en local, sans bloquer l'appli.
   }
 }
 
@@ -137,8 +177,8 @@ const THEME_CSS = `
     --tile-minuteur: linear-gradient(135deg, #16C79A, #2E6FD1);
     --tile-chrono: linear-gradient(135deg, #8A4DFF, #FF4FA3);
     --tile-blocnote: linear-gradient(135deg, #16C79A, #FFC145);
+    --tile-liens: linear-gradient(135deg, #2E6FD1, #16C79A);
   }
-  [data-theme="sombre"] {
     --paper: #101713;
     --card: #1A2420;
     --ink: #EEF3EC;
@@ -162,6 +202,7 @@ const THEME_CSS = `
     --tile-minuteur: linear-gradient(135deg, #3EE6BD, #7FB0FF);
     --tile-chrono: linear-gradient(135deg, #A97CFF, #FF7CC0);
     --tile-blocnote: linear-gradient(135deg, #3EE6BD, #FFD873);
+    --tile-liens: linear-gradient(135deg, #7FB0FF, #3EE6BD);
   }
 `;
 
@@ -414,6 +455,72 @@ function QuickTile({ Icon, label, onClick, tone }) {
   );
 }
 
+// ---------- Écran : Gestion de classe (regroupe Classe/Groupe, Appel, Trombi) ----------
+function GestionClasseScreen({ sousOnglet, setSousOnglet, classes, setClasses, updateClasse, updateEleve, onOpenClass, onOpenEleve, onAnnotate, onVoirFicheCycle, biblio, setBiblio }) {
+  const sousOnglets = [
+    { key: "appel", label: "Appel" },
+    { key: "classes", label: "Classe/Groupe" },
+    { key: "trombi", label: "Trombi" },
+  ];
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, padding: "12px 16px 0" }}>
+        {sousOnglets.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setSousOnglet(s.key)}
+            style={{
+              flex: 1, padding: "8px 6px", borderRadius: 9, border: `1px solid ${sousOnglet === s.key ? PRIMARY : LINE}`,
+              background: sousOnglet === s.key ? PRIMARY_SOFT : CARD, color: sousOnglet === s.key ? PRIMARY : "var(--muted-soft)",
+              fontWeight: 700, fontSize: 12, cursor: "pointer",
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      {sousOnglet === "classes" && <ClassesScreen classes={classes} setClasses={setClasses} onOpenClass={onOpenClass} />}
+      {sousOnglet === "appel" && <AppelScreen classes={classes} updateClasse={updateClasse} onOpenEleve={onOpenEleve} onAnnotate={onAnnotate} onVoirFicheCycle={onVoirFicheCycle} biblio={biblio} setBiblio={setBiblio} />}
+      {sousOnglet === "trombi" && <TrombiScreen classes={classes} updateEleve={updateEleve} updateClasse={updateClasse} onOpenEleve={onOpenEleve} />}
+    </div>
+  );
+}
+
+// ---------- Écran : Liens externes (autres applis de C. Guilhem) ----------
+function LiensExternesScreen() {
+  const liens = [
+    { label: "Suivi AS", description: "Fiches élèves de l'Association Sportive", url: "https://suivi-as.onrender.com" },
+    { label: "Muscu Pro", description: "Suivi musculation par séance", url: "https://muscu-pro-app.vercel.app" },
+    { label: "VMA Pro", description: "Calcul VMA, allures et charge", url: "https://vma-pro.vercel.app" },
+    { label: "Fractionné GPS Pro", description: "Guidage fractionné par GPS et %VMA", url: "https://fractionne-gps-pro.vercel.app" },
+  ];
+  return (
+    <div style={{ padding: 18 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-soft)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 12 }}>
+        Mes autres applications
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {liens.map((l) => (
+          <a
+            key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              background: "var(--tile-liens)", color: "#fff", borderRadius: 14, padding: "16px 16px",
+              textDecoration: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.16)",
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{l.label}</div>
+              <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>{l.description}</div>
+            </div>
+            <ExternalLink size={20} />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Écran : Liens perso (ajoutés librement par l'utilisateur) ----------
 const CATEGORIES_LIENS = [
   { value: "site", label: "Site internet", Icon: Globe },
@@ -442,7 +549,7 @@ function LiensPersoScreen({ liensPerso, setLiensPerso }) {
   };
 
   return (
-    <div style={{ padding: 18 }}>
+    <div style={{ padding: "6px 18px 18px" }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-soft)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 12 }}>
         Mes liens perso
       </div>
@@ -490,37 +597,6 @@ function LiensPersoScreen({ liensPerso, setLiensPerso }) {
 }
 
 // ---------- Écran : Liste des classes ----------
-// ---------- Écran : Gestion de classe (regroupe Classe/Groupe, Appel, Trombi) ----------
-function GestionClasseScreen({ sousOnglet, setSousOnglet, classes, setClasses, updateClasse, updateEleve, onOpenClass, onOpenEleve, onAnnotate, onVoirFicheCycle, biblio, setBiblio }) {
-  const sousOnglets = [
-    { key: "appel", label: "Appel" },
-    { key: "classes", label: "Classe/Groupe" },
-    { key: "trombi", label: "Trombi" },
-  ];
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 6, padding: "12px 16px 0" }}>
-        {sousOnglets.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setSousOnglet(s.key)}
-            style={{
-              flex: 1, padding: "8px 6px", borderRadius: 9, border: `1px solid ${sousOnglet === s.key ? PRIMARY : LINE}`,
-              background: sousOnglet === s.key ? PRIMARY_SOFT : CARD, color: sousOnglet === s.key ? PRIMARY : "var(--muted-soft)",
-              fontWeight: 700, fontSize: 12, cursor: "pointer",
-            }}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-      {sousOnglet === "classes" && <ClassesScreen classes={classes} setClasses={setClasses} onOpenClass={onOpenClass} />}
-      {sousOnglet === "appel" && <AppelScreen classes={classes} updateClasse={updateClasse} onOpenEleve={onOpenEleve} onAnnotate={onAnnotate} onVoirFicheCycle={onVoirFicheCycle} biblio={biblio} setBiblio={setBiblio} />}
-      {sousOnglet === "trombi" && <TrombiScreen classes={classes} updateEleve={updateEleve} updateClasse={updateClasse} onOpenEleve={onOpenEleve} />}
-    </div>
-  );
-}
-
 function ClassesScreen({ classes, setClasses, onOpenClass }) {
   const [formOuvert, setFormOuvert] = useState(false);
   const creerClasse = ({ nom }) => {
@@ -2443,6 +2519,46 @@ function typeDocument(file) {
   return "fichier";
 }
 
+// Convertit une data URL (base64) en Blob, pour une ouverture fiable sur mobile
+// (les navigateurs mobiles gèrent souvent mal l'ouverture directe de longues data: URL).
+function dataUrlVersBlob(dataUrl) {
+  const [entete, base64] = dataUrl.split(",");
+  const mime = /data:(.*?);base64/.exec(entete)?.[1] || "application/octet-stream";
+  const bin = atob(base64);
+  const octets = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) octets[i] = bin.charCodeAt(i);
+  return new Blob([octets], { type: mime });
+}
+
+// Ouvre un document dans un nouvel onglet via une URL blob (plus fiable que data: sur mobile),
+// ou déclenche un téléchargement si le navigateur ne sait pas l'afficher.
+function ouvrirDocumentDansOnglet(doc) {
+  try {
+    const blob = dataUrlVersBlob(doc.data);
+    const url = URL.createObjectURL(blob);
+    const fenetre = window.open(url, "_blank");
+    if (!fenetre) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.nom;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    const a = document.createElement("a");
+    a.href = doc.data;
+    a.download = doc.nom;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+}
+
+// Types de fichiers qu'on peut prévisualiser avec XLSX (SheetJS)
+const EXTENSIONS_TABLEUR = ["XLS", "XLSX", "CSV", "ODS"];
+
 function rotateDataUrl(dataUrl, angle) {
   return new Promise((resolve) => {
     if (!angle) { resolve(dataUrl); return; }
@@ -2891,6 +3007,100 @@ function MoveModal({ biblio, sourcePath, onClose, onMove }) {
   );
 }
 
+// ---------- Fenêtre : visionneuse de document (image / PDF / tableur / autre) ----------
+function DocumentViewerModal({ doc, onClose }) {
+  const [feuille, setFeuille] = useState(null); // { headers, rows } pour aperçu tableur
+  const [erreurTableur, setErreurTableur] = useState(false);
+  const [urlPdf, setUrlPdf] = useState(null);
+
+  React.useEffect(() => {
+    if (doc.extension === "PDF") {
+      const blob = dataUrlVersBlob(doc.data);
+      const url = URL.createObjectURL(blob);
+      setUrlPdf(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    if (EXTENSIONS_TABLEUR.includes(doc.extension)) {
+      try {
+        const base64 = doc.data.split(",")[1];
+        const wb = XLSX.read(base64, { type: "base64" });
+        const feuilleNom = wb.SheetNames[0];
+        const json = XLSX.utils.sheet_to_json(wb.Sheets[feuilleNom], { header: 1 });
+        setFeuille({ headers: json[0] || [], rows: json.slice(1, 200) });
+      } catch (e) {
+        setErreurTableur(true);
+      }
+    }
+  }, [doc]);
+
+  const estImage = doc.type === "image";
+  const estPdf = doc.extension === "PDF";
+  const estTableur = EXTENSIONS_TABLEUR.includes(doc.extension);
+  const estVideo = doc.type === "video";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 70, display: "flex", flexDirection: "column" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ margin: "auto", width: "100%", maxWidth: 640, maxHeight: "88vh", background: CARD, borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: `1px solid ${LINE}` }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, marginRight: 8 }}>{doc.nom}</div>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted-soft)", flexShrink: 0 }}><X size={20} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", padding: 14, background: "#f4f2ec" }}>
+          {estImage && (
+            <img src={doc.data} alt="" style={{ width: "100%", borderRadius: 8 }} />
+          )}
+          {estVideo && (
+            <video src={doc.data} controls style={{ width: "100%", borderRadius: 8 }} />
+          )}
+          {estPdf && urlPdf && (
+            <iframe src={urlPdf} title={doc.nom} style={{ width: "100%", height: "65vh", border: "none", borderRadius: 8, background: "#fff" }} />
+          )}
+          {estTableur && feuille && (
+            <div style={{ overflow: "auto", background: "#fff", borderRadius: 8, border: `1px solid ${LINE}` }}>
+              <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
+                <thead>
+                  <tr>
+                    {feuille.headers.map((h, i) => (
+                      <th key={i} style={{ border: `1px solid ${LINE}`, padding: "5px 8px", background: PRIMARY_SOFT, textAlign: "left", whiteSpace: "nowrap" }}>{h ?? ""}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {feuille.rows.map((row, i) => (
+                    <tr key={i}>
+                      {feuille.headers.map((_, j) => (
+                        <td key={j} style={{ border: `1px solid ${LINE}`, padding: "5px 8px", whiteSpace: "nowrap" }}>{row[j] ?? ""}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {estTableur && !feuille && !erreurTableur && (
+            <div style={{ color: "var(--muted-soft)", fontSize: 13, textAlign: "center", padding: 30 }}>Chargement de l'aperçu…</div>
+          )}
+          {(erreurTableur || (!estImage && !estVideo && !estPdf && !estTableur)) && (
+            <div style={{ color: "var(--muted-soft)", fontSize: 13, textAlign: "center", padding: 30 }}>
+              Aucun aperçu disponible pour ce type de fichier ({doc.extension || "?"}).<br />Utilisez « Ouvrir » ou « Télécharger » ci-dessous.
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${LINE}` }}>
+          <button onClick={() => ouvrirDocumentDansOnglet(doc)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            <ExternalLink size={16} /> Ouvrir
+          </button>
+          <a href={doc.data} download={doc.nom} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: `1px solid ${LINE}`, color: INK, fontWeight: 700, fontSize: 13, textDecoration: "none" }}>
+            <Download size={16} /> Télécharger
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Écran : Documents (fichiers + dossiers thématiques imbriqués) ----------
 function DocumentsScreen({ biblio, setBiblio, onSupprimerPhotoDeDispense, onOpenRecapDispenses, onOpenEvaluations, onOpenEvaluation }) {
   const [path, setPath] = useState([]); // [{id, nom}, ...]
@@ -2902,6 +3112,7 @@ function DocumentsScreen({ biblio, setBiblio, onSupprimerPhotoDeDispense, onOpen
   const [modeSelection, setModeSelection] = useState(false);
   const [selection, setSelection] = useState({});
   const [impressionDocs, setImpressionDocs] = useState(null);
+  const [docEnVisionneuse, setDocEnVisionneuse] = useState(null);
 
   const node = getNode(biblio, path) || biblio;
   const documents = node.documents;
@@ -2984,8 +3195,8 @@ function DocumentsScreen({ biblio, setBiblio, onSupprimerPhotoDeDispense, onOpen
         <input type="checkbox" checked={!!selection[doc.id]} onChange={() => toggleSelection(doc.id)} style={{ flexShrink: 0 }} />
       )}
       <div
-        onClick={() => doc.type === "evaluation-ref" && onOpenEvaluation(doc.evalId)}
-        style={{ width: 38, height: 38, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: PRIMARY_SOFT, display: "flex", alignItems: "center", justifyContent: "center", cursor: doc.type === "evaluation-ref" ? "pointer" : "default" }}
+        onClick={() => (doc.type === "evaluation-ref" ? onOpenEvaluation(doc.evalId) : setDocEnVisionneuse(doc))}
+        style={{ width: 38, height: 38, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: PRIMARY_SOFT, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
       >
         {doc.type === "image" ? (
           <img src={doc.data} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -2998,8 +3209,8 @@ function DocumentsScreen({ biblio, setBiblio, onSupprimerPhotoDeDispense, onOpen
         )}
       </div>
       <div
-        onClick={() => doc.type === "evaluation-ref" && onOpenEvaluation(doc.evalId)}
-        style={{ flex: 1, minWidth: 0, cursor: doc.type === "evaluation-ref" ? "pointer" : "default" }}
+        onClick={() => (doc.type === "evaluation-ref" ? onOpenEvaluation(doc.evalId) : setDocEnVisionneuse(doc))}
+        style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
       >
         <div style={{ fontSize: 13, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.nom}</div>
         <div style={{ fontSize: 10.5, color: "var(--muted-soft)" }}>{doc.extension} · {new Date(doc.dateAjout).toLocaleDateString("fr-FR")}</div>
@@ -3148,6 +3359,9 @@ function DocumentsScreen({ biblio, setBiblio, onSupprimerPhotoDeDispense, onOpen
       )}
       {docEnDeplacement && (
         <MoveModal biblio={biblio} sourcePath={path} onClose={() => setDocEnDeplacement(null)} onMove={deplacerDocument} />
+      )}
+      {docEnVisionneuse && (
+        <DocumentViewerModal doc={docEnVisionneuse} onClose={() => setDocEnVisionneuse(null)} />
       )}
       {confirmSuppressionDoc && (
         <LinkedDeleteModal
@@ -3411,13 +3625,14 @@ function estJourFerie(edt, date) {
 }
 
 // ---------- Écran : Assistant de rentrée ----------
-function AssistantRentreeScreen({ etablissement, setEtablissement, edt, setEdt, classes }) {
+function AssistantRentreeScreen({ etablissement, setEtablissement, edt, setEdt, classes, codeProf, statutSync, onActiverSync, onDesactiverSync }) {
   const [nomEtab, setNomEtab] = useState(etablissement.nom || "");
   const [anneeTxt, setAnneeTxt] = useState(etablissement.anneeScolaire || "");
   const [formVacancesOuvert, setFormVacancesOuvert] = useState(false);
   const [formFerieOuvert, setFormFerieOuvert] = useState(false);
   const [formNouvelleAnneeOuvert, setFormNouvelleAnneeOuvert] = useState(false);
   const [historiqueOuvert, setHistoriqueOuvert] = useState(null);
+  const [codeSaisi, setCodeSaisi] = useState(codeProf || "");
 
   const sauverEtablissement = () => setEtablissement({ nom: nomEtab, anneeScolaire: anneeTxt });
 
@@ -3456,6 +3671,43 @@ function AssistantRentreeScreen({ etablissement, setEtablissement, edt, setEdt, 
 
   return (
     <div style={{ padding: 16, paddingBottom: 40 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-soft)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Synchronisation en ligne</div>
+      <div style={{ background: codeProf ? PRIMARY_SOFT : CARD, border: `1px solid ${codeProf ? PRIMARY : LINE}`, borderRadius: 12, padding: 12, marginBottom: 20 }}>
+        {codeProf ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 4, background: statutSync === "syncing" ? "var(--st-tenue-c)" : "var(--st-present-c)" }} />
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                {statutSync === "syncing" ? "Synchronisation…" : "Synchronisé"} — code « {codeProf} »
+              </div>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 10 }}>
+              Tes données se synchronisent automatiquement. Utilise ce même code sur un autre appareil pour les y retrouver.
+            </div>
+            <button onClick={onDesactiverSync} style={{ width: "100%", padding: "8px 0", borderRadius: 9, border: `1px solid ${LINE}`, background: CARD, color: "var(--st-absent-c)", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+              Désactiver la synchronisation (rester en local uniquement)
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12.5, color: "var(--muted-soft)", marginBottom: 8 }}>
+              Choisis un code personnel (garde-le secret) pour synchroniser tes données entre plusieurs appareils, ou pour les récupérer si tu changes de téléphone.
+            </div>
+            <input
+              value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)}
+              placeholder="ex : cguilhem-brassens" style={{ width: "100%", padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, fontSize: 13, marginBottom: 8, background: CARD, color: INK }}
+            />
+            <button
+              onClick={() => codeSaisi.trim() && onActiverSync(codeSaisi.trim())}
+              disabled={!codeSaisi.trim()}
+              style={{ width: "100%", padding: "9px 0", borderRadius: 9, border: "none", background: codeSaisi.trim() ? PRIMARY : LINE, color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: codeSaisi.trim() ? "pointer" : "default" }}
+            >
+              Activer la synchronisation
+            </button>
+          </div>
+        )}
+      </div>
+
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted-soft)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Établissement</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         <input
@@ -4435,7 +4687,6 @@ function ClasseCycleSheet({ classe }) {
   );
 }
 
-// ---------- Écran de verrouillage PIN ----------
 // ---------- Écran : Changer le code d'accès ----------
 function ChangerPinScreen({ pinActuel, onChangePin, onBack }) {
   const [etape, setEtape] = useState("verif"); // 'verif' | 'nouveau' | 'confirme'
@@ -4517,6 +4768,7 @@ function ChangerPinScreen({ pinActuel, onChangePin, onBack }) {
   );
 }
 
+// ---------- Écran de verrouillage PIN ----------
 function LockScreen({ onUnlock, lockPhoto, onChangePhoto, theme, onToggleTheme, pinAttendu }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
@@ -4556,7 +4808,7 @@ function LockScreen({ onUnlock, lockPhoto, onChangePhoto, theme, onToggleTheme, 
       </button>
 
       <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, letterSpacing: 1, marginBottom: 2, textShadow: "0 1px 8px rgba(0,0,0,0.4)" }}>EPS PRO LOCALE</div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, letterSpacing: 1, marginBottom: 2, textShadow: "0 1px 8px rgba(0,0,0,0.4)" }}>EPS PRO</div>
         <div style={{ fontSize: 10.5, fontStyle: "italic", opacity: 0.75, marginBottom: 20 }}>by C. Guilhem</div>
         <div style={{ fontSize: 12.5, opacity: 0.85, marginBottom: 26 }}>Code d'accès</div>
         <div style={{ display: "flex", gap: 12, marginBottom: 30 }}>
@@ -4614,20 +4866,29 @@ export default function EpsPro() {
   const toggleTheme = () => setTheme((t) => (t === "clair" ? "sombre" : "clair"));
 
   const [pret, setPret] = useState(false);
+  const [codeProf, setCodeProf] = useState("");
+  const [statutSync, setStatutSync] = useState("local"); // 'local' | 'synced' | 'syncing'
 
   React.useEffect(() => {
     let annule = false;
     (async () => {
+      const code = (await idbLire("codeProf")) || "";
       const pinLocal = await idbLire("pinAcces");
       if (pinLocal?.valeur) setPinAcces(pinLocal.valeur);
       const cles = ["classes", "biblio", "evaluations", "edt", "etablissement", "lockPhoto", "theme", "liensPerso"];
       const locaux = await Promise.all(cles.map((c) => idbLire(c)));
+      const distants = code ? await Promise.all(cles.map((c) => cloudLire(code, c))) : cles.map(() => null);
       if (annule) return;
 
       const valeurs = {};
       cles.forEach((cle, i) => {
         const local = locaux[i]; // { valeur, maj } | undefined
-        if (local) valeurs[cle] = local.valeur;
+        const distant = distants[i]; // { valeur, maj } | null
+        if (distant && (!local || distant.maj > local.maj)) {
+          valeurs[cle] = distant.valeur;
+        } else if (local) {
+          valeurs[cle] = local.valeur;
+        }
       });
 
       if (valeurs.classes) setClasses(valeurs.classes);
@@ -4638,6 +4899,8 @@ export default function EpsPro() {
       if (valeurs.lockPhoto) setLockPhoto(valeurs.lockPhoto);
       if (valeurs.theme) setTheme(valeurs.theme);
       if (valeurs.liensPerso) setLiensPerso(valeurs.liensPerso);
+      setCodeProf(code);
+      setStatutSync(code ? "synced" : "local");
       setPret(true);
     })();
     return () => { annule = true; };
@@ -4646,21 +4909,48 @@ export default function EpsPro() {
   const sauvegarder = (cle, valeur) => {
     const maj = Date.now();
     idbEcrire(cle, { valeur, maj });
+    if (codeProf) {
+      setStatutSync("syncing");
+      cloudEcrire(codeProf, cle, valeur, maj).then(() => setStatutSync("synced"));
+    }
+  };
+
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("classes", classes), 400); return () => clearTimeout(t); }, [classes, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("biblio", biblio), 400); return () => clearTimeout(t); }, [biblio, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("evaluations", evaluations), 400); return () => clearTimeout(t); }, [evaluations, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("edt", edt), 400); return () => clearTimeout(t); }, [edt, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("etablissement", etablissement), 400); return () => clearTimeout(t); }, [etablissement, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("lockPhoto", lockPhoto), 400); return () => clearTimeout(t); }, [lockPhoto, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("theme", theme), 400); return () => clearTimeout(t); }, [theme, pret, codeProf]);
+  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("liensPerso", liensPerso), 400); return () => clearTimeout(t); }, [liensPerso, pret, codeProf]);
+
+  const activerSynchronisation = async (code) => {
+    idbEcrire("codeProf", code);
+    setCodeProf(code);
+    setStatutSync("syncing");
+    // Au moment d'activer, on pousse immédiatement l'état local actuel vers le cloud
+    // pour initialiser la fiche de ce code (ou la mettre à jour).
+    const maj = Date.now();
+    await Promise.all([
+      cloudEcrire(code, "classes", classes, maj),
+      cloudEcrire(code, "biblio", biblio, maj),
+      cloudEcrire(code, "evaluations", evaluations, maj),
+      cloudEcrire(code, "edt", edt, maj),
+      cloudEcrire(code, "etablissement", etablissement, maj),
+      cloudEcrire(code, "liensPerso", liensPerso, maj),
+    ]);
+    setStatutSync("synced");
+  };
+  const desactiverSynchronisation = () => {
+    idbEcrire("codeProf", "");
+    setCodeProf("");
+    setStatutSync("local");
   };
 
   const changerPin = (nouveauPin) => {
     idbEcrire("pinAcces", { valeur: nouveauPin, maj: Date.now() });
     setPinAcces(nouveauPin);
   };
-
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("classes", classes), 400); return () => clearTimeout(t); }, [classes, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("biblio", biblio), 400); return () => clearTimeout(t); }, [biblio, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("evaluations", evaluations), 400); return () => clearTimeout(t); }, [evaluations, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("edt", edt), 400); return () => clearTimeout(t); }, [edt, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("etablissement", etablissement), 400); return () => clearTimeout(t); }, [etablissement, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("lockPhoto", lockPhoto), 400); return () => clearTimeout(t); }, [lockPhoto, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("theme", theme), 400); return () => clearTimeout(t); }, [theme, pret]);
-  React.useEffect(() => { if (!pret) return; const t = setTimeout(() => sauvegarder("liensPerso", liensPerso), 400); return () => clearTimeout(t); }, [liensPerso, pret]);
 
   const push = (screen, params = {}) => setNav([...nav, { screen, params }]);
   const pop = () => setNav(nav.slice(0, -1));
@@ -4746,7 +5036,7 @@ export default function EpsPro() {
     body = <EmploiDuTempsScreen classes={classes} edt={edt} setEdt={setEdt} />;
   } else if (current?.screen === "assistantRentree") {
     title = "Assistant de rentrée";
-    body = <AssistantRentreeScreen etablissement={etablissement} setEtablissement={setEtablissement} edt={edt} setEdt={setEdt} classes={classes} />;
+    body = <AssistantRentreeScreen etablissement={etablissement} setEtablissement={setEtablissement} edt={edt} setEdt={setEdt} classes={classes} codeProf={codeProf} statutSync={statutSync} onActiverSync={activerSynchronisation} onDesactiverSync={desactiverSynchronisation} />;
   } else if (current?.screen === "changerPin") {
     title = "Code d'accès";
     body = <ChangerPinScreen pinActuel={pinAcces} onChangePin={changerPin} onBack={pop} />;
@@ -4761,7 +5051,13 @@ export default function EpsPro() {
       case "gestion": title = "Gestion de classe"; body = <GestionClasseScreen sousOnglet={sousOngletGestion} setSousOnglet={setSousOngletGestion} classes={classes} setClasses={setClasses} updateClasse={updateClasse} updateEleve={updateEleveIn} onOpenClass={(id) => push("classeDetail", { id })} onOpenEleve={(cid, eid) => push("fiche", { classeId: cid, eleveId: eid })} onAnnotate={(cid, eid, activite) => setAnnotCible({ classeId: cid, eleveId: eid, activite })} onVoirFicheCycle={(cid) => push("ficheCycle", { classeId: cid })} biblio={biblio} setBiblio={setBiblio} />; break;
       case "documents": title = "Documents"; body = <DocumentsScreen biblio={biblio} setBiblio={setBiblio} onSupprimerPhotoDeDispense={supprimerPhotoDeDispense} onOpenRecapDispenses={() => push("recapDispenses", {})} onOpenEvaluations={() => push("evaluations", {})} onOpenEvaluation={(id) => push("evaluationEditor", { id })} />; break;
       case "outils": title = "Outils"; body = <OutilsScreen onOpenOutil={(id) => push("outil", { id })} onOpenEvaluations={() => push("evaluations", {})} onOpenEdt={() => push("edt", {})} onOpenAssistantRentree={() => push("assistantRentree", {})} onOpenChangerPin={() => push("changerPin", {})} />; break;
-      case "liens": title = "Liens"; body = <LiensPersoScreen liensPerso={liensPerso} setLiensPerso={setLiensPerso} />; break;
+      case "liens": title = "Liens"; body = (
+        <>
+          <LiensExternesScreen />
+          <div style={{ height: 1, background: LINE, margin: "4px 18px" }} />
+          <LiensPersoScreen liensPerso={liensPerso} setLiensPerso={setLiensPerso} />
+        </>
+      ); break;
       default: body = null;
     }
   }
@@ -4799,7 +5095,7 @@ export default function EpsPro() {
 
       {!pret ? (
         <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: PRIMARY, color: "#fff" }}>
-          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, letterSpacing: 1 }}>EPS PRO LOCALE</div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, letterSpacing: 1 }}>EPS PRO</div>
           <div style={{ fontSize: 12, opacity: 0.8 }}>Chargement de tes données…</div>
         </div>
       ) : locked ? (
@@ -4807,7 +5103,7 @@ export default function EpsPro() {
       ) : (
         <div className="eps-shell" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
           <nav className="eps-side-nav">
-            <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, color: PRIMARY, padding: "6px 10px 14px", letterSpacing: 0.3 }}>EPS PRO LOCALE</div>
+            <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, color: PRIMARY, padding: "6px 10px 14px", letterSpacing: 0.3 }}>EPS PRO</div>
             {navItems.map((n) => (
               <button key={n.key} className="eps-side-link" onClick={() => goto(n.key)} style={{ color: tab === n.key && !current ? PRIMARY : "var(--muted)", background: tab === n.key && !current ? PRIMARY_SOFT : "none" }}>
                 <n.Icon size={17} /> {n.label}
