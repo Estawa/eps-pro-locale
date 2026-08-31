@@ -13,6 +13,10 @@ import {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Numéro de version de l'application — à incrémenter à chaque mise à jour livrée.
+// Historique détaillé des changements : voir CHANGELOG.md à la racine du projet.
+const APP_VERSION = "1.1.0";
+
 // ---------- Stockage local persistant (IndexedDB) ----------
 const DB_NOM = "eps-pro-db";
 const DB_MAGASIN = "kv";
@@ -272,6 +276,9 @@ function TopBar({ title, onBack, theme, onToggleTheme }) {
         <div style={{ fontSize: 10.5, fontStyle: "italic", color: "var(--muted-soft)", whiteSpace: "nowrap", flexShrink: 0 }}>
           by C. Guilhem
         </div>
+        <div style={{ fontSize: 9, color: "var(--faint)", whiteSpace: "nowrap", flexShrink: 0 }}>
+          v{APP_VERSION}
+        </div>
       </div>
       <button onClick={onToggleTheme} title="Changer de luminosité" style={{ border: `1px solid ${LINE}`, background: "none", borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: ACCENT }}>
         {theme === "sombre" ? <Sun size={16} /> : <Moon size={16} />}
@@ -318,13 +325,33 @@ function Accueil({ classes, edt, setEdt, etablissement, onOpenEdt }) {
     const idx = classes.findIndex((c) => c.id === id);
     return idx === -1 ? { bg: "#EDEDED", bd: "#CFCFCF", tx: "#6B6656" } : PALETTE_CLASSES[idx % PALETTE_CLASSES.length];
   };
-  const semaineAuto = calculerSemaineAuto(edt, aujourdhui);
+
+  const [weekOffset, setWeekOffset] = useState(0);
+  const lundiAuj = lundiDeLaSemaine(aujourdhui);
+  const lundiAffiche = new Date(lundiAuj);
+  lundiAffiche.setDate(lundiAffiche.getDate() + weekOffset * 7);
+  const referencePourSemaine = weekOffset === 0 ? aujourdhui : lundiAffiche;
+  const datesSemaine = JOURS.map((_, i) => {
+    const d = new Date(lundiAffiche);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+  const isoSemaine = datesSemaine.map((d) => d.toISOString().slice(0, 10));
+
+  const sauterADate = (dateStr) => {
+    if (!dateStr) return;
+    const lundiCible = lundiDeLaSemaine(new Date(dateStr + "T00:00:00"));
+    const diffJours = Math.round((lundiCible - lundiAuj) / 86400000);
+    setWeekOffset(Math.round(diffJours / 7));
+  };
+
+  const semaineAuto = calculerSemaineAuto(edt, referencePourSemaine);
   const modeSemaine = edt?.semaineActuelle || "AUTO";
   const semaine = modeSemaine === "AUTO" ? (semaineAuto || "A") : modeSemaine;
   const creneaux = (edt?.creneaux || []).filter((c) => !c.semaine || c.semaine === semaine);
   const heuresUniques = [...new Set(creneaux.map((c) => c.heureDebut))].sort((a, b) => heureEnMinutes(a) - heureEnMinutes(b));
-  const vacancesEnCours = estDansVacances(edt, aujourdhui);
-  const ferieAujourdhui = estJourFerie(edt, aujourdhui);
+  const vacancesEnCours = weekOffset === 0 ? estDansVacances(edt, aujourdhui) : null;
+  const ferieAujourdhui = weekOffset === 0 ? estJourFerie(edt, aujourdhui) : null;
 
   return (
     <div style={{ padding: 18 }}>
@@ -351,6 +378,22 @@ function Accueil({ classes, edt, setEdt, etablissement, onOpenEdt }) {
         </div>
         <button onClick={onOpenEdt} style={{ border: "none", background: "none", color: PRIMARY, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Gérer →</button>
       </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <button onClick={() => setWeekOffset((o) => o - 1)} style={{ border: `1px solid ${LINE}`, background: CARD, borderRadius: 9, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: PRIMARY }}>
+          <ChevronLeft size={16} />
+        </button>
+        <button onClick={() => setWeekOffset(0)} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700, color: weekOffset === 0 ? PRIMARY : INK, background: weekOffset === 0 ? PRIMARY_SOFT : CARD, border: `1px solid ${LINE}`, borderRadius: 9, padding: "7px 4px", cursor: "pointer" }}>
+          {weekOffset === 0 ? "Cette semaine" : `Semaine du ${datesSemaine[0].toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} au ${datesSemaine[5].toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}`}
+        </button>
+        <button onClick={() => setWeekOffset((o) => o + 1)} style={{ border: `1px solid ${LINE}`, background: CARD, borderRadius: 9, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: PRIMARY, transform: "rotate(180deg)" }}>
+          <ChevronLeft size={16} />
+        </button>
+      </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 11.5, color: "var(--muted-soft)" }}>
+        Aller à une date :
+        <input type="date" onChange={(e) => sauterADate(e.target.value)} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 7px", fontSize: 12, background: CARD, color: INK }} />
+      </label>
 
       {(vacancesEnCours || ferieAujourdhui) && (
         <div style={{ background: ACCENT_SOFT, border: `1px solid ${ACCENT}`, borderRadius: 10, padding: "9px 12px", marginBottom: 10, fontSize: 12, color: ACCENT, fontWeight: 600 }}>
@@ -387,15 +430,18 @@ function Accueil({ classes, edt, setEdt, etablissement, onOpenEdt }) {
             <thead>
               <tr>
                 <th style={{ position: "sticky", left: 0, background: CARD, padding: "6px 8px" }}></th>
-                {JOURS.map((j) => (
-                  <th key={j.key} style={{
-                    padding: "9px 6px", fontWeight: 700, whiteSpace: "nowrap", borderRadius: 10,
-                    color: j.key === jourAujourdhui ? "#fff" : "var(--muted)",
-                    background: j.key === jourAujourdhui ? PRIMARY : "transparent",
-                  }}>
-                    {j.label.slice(0, 3)}
-                  </th>
-                ))}
+                {JOURS.map((j, i) => {
+                  const estAujourdhui = weekOffset === 0 && j.key === jourAujourdhui;
+                  return (
+                    <th key={j.key} style={{
+                      padding: "9px 6px", fontWeight: 700, whiteSpace: "nowrap", borderRadius: 10,
+                      color: estAujourdhui ? "#fff" : "var(--muted)",
+                      background: estAujourdhui ? PRIMARY : "transparent",
+                    }}>
+                      {j.label.slice(0, 3)} {datesSemaine[i].getDate()}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -404,12 +450,13 @@ function Accueil({ classes, edt, setEdt, etablissement, onOpenEdt }) {
                   <td style={{ position: "sticky", left: 0, background: CARD, padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 700, color: "var(--muted-soft)", fontSize: 11 }}>
                     {h}
                   </td>
-                  {JOURS.map((j) => {
+                  {JOURS.map((j, i) => {
                     const c = creneaux.find((x) => x.jour === j.key && x.heureDebut === h);
-                    const aujourdhui = j.key === jourAujourdhui;
+                    const estAujourdhui = weekOffset === 0 && j.key === jourAujourdhui;
                     const couleur = c?.classeId ? couleurClasse(c.classeId) : { bg: "var(--faint)", bd: LINE, tx: "var(--muted-soft)" };
+                    const activiteEffective = c?.classeId ? activiteEffectivePourCreneau(classes.find((x) => x.id === c.classeId), c, isoSemaine[i]) : "";
                     return (
-                      <td key={j.key} style={{ padding: 0, verticalAlign: "top", minWidth: 80, borderRadius: 10, background: !c && aujourdhui ? PRIMARY_SOFT : "transparent" }}>
+                      <td key={j.key} style={{ padding: 0, verticalAlign: "top", minWidth: 80, borderRadius: 10, background: !c && estAujourdhui ? PRIMARY_SOFT : "transparent" }}>
                         {c ? (
                           <div style={{
                             background: couleur.bg, border: `1.5px solid ${couleur.bd}`, borderRadius: 10,
@@ -417,7 +464,7 @@ function Accueil({ classes, edt, setEdt, etablissement, onOpenEdt }) {
                           }}>
                             <div style={{ fontWeight: 700, color: couleur.tx, fontSize: 11 }}>{c.classeId ? nomClasse(c.classeId) : (c.titre || "")}</div>
                             <div style={{ color: couleur.tx, opacity: 0.75, fontSize: 9.5 }}>{c.heureFin ? `–${c.heureFin}` : ""}</div>
-                            {c.classeId && c.activite && <div style={{ color: couleur.tx, fontWeight: 600, fontSize: 9.5, marginTop: 1 }}>{c.activite}</div>}
+                            {c.classeId && activiteEffective && <div style={{ color: couleur.tx, fontWeight: 600, fontSize: 9.5, marginTop: 1 }}>{activiteEffective}</div>}
                             {c.semaine && <div style={{ color: couleur.tx, opacity: 0.6, fontSize: 8.5, fontWeight: 700, marginTop: 1 }}>SEM. {c.semaine}</div>}
                           </div>
                         ) : (
@@ -3624,6 +3671,72 @@ function estJourFerie(edt, date) {
   return (edt.feries || []).find((f) => f.date === iso) || null;
 }
 
+function ajouterJoursISO(iso, n) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function lundiDeLaSemaine(date) {
+  const d = new Date(date);
+  const jour = d.getDay(); // 0 = dimanche
+  const diff = jour === 0 ? -6 : 1 - jour;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Renvoie l'activité qui s'applique réellement à un créneau donné, à une date donnée :
+// priorité à une activité saisie manuellement sur le créneau, sinon on va chercher
+// le cycle de la classe qui couvre cette date (et, si plusieurs séances/semaine ont
+// des activités différentes, l'activité propre à ce créneau).
+function activiteEffectivePourCreneau(classe, creneau, dateISO) {
+  if (!creneau) return "";
+  if (creneau.activite && creneau.activite.trim()) return creneau.activite.trim();
+  if (!classe) return "";
+  const cycles = [...(classe.cycles || [])].filter((cy) => cy.dateDebut).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+  if (cycles.length === 0) return "";
+  let match = null;
+  for (const cy of cycles) {
+    const finOk = !cy.dateFin || dateISO <= cy.dateFin;
+    if (cy.dateDebut <= dateISO && finOk) match = cy;
+  }
+  if (!match) {
+    for (const cy of cycles) if (cy.dateDebut <= dateISO) match = cy;
+  }
+  if (!match) match = cycles[0];
+  if (match.activitesParCreneau && match.activitesParCreneau[creneau.id]) return match.activitesParCreneau[creneau.id];
+  return match.activite || "";
+}
+
+// Détecte les trous (aucun cycle programmé) et les chevauchements entre cycles d'une même classe.
+function detecterProblemesCycles(cycles) {
+  const tries = [...(cycles || [])].filter((c) => c.dateDebut).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+  const problemes = [];
+  for (let i = 0; i < tries.length - 1; i++) {
+    const a = tries[i];
+    const b = tries[i + 1];
+    if (!a.dateFin) {
+      problemes.push(`Le cycle du ${fmtDateCourt(a.dateDebut)} n'a pas de date de fin alors qu'un autre cycle démarre le ${fmtDateCourt(b.dateDebut)} : chevauchement.`);
+      continue;
+    }
+    if (a.dateFin >= b.dateDebut) {
+      problemes.push(`Chevauchement entre le cycle du ${fmtDateCourt(a.dateDebut)} au ${fmtDateCourt(a.dateFin)} et celui débutant le ${fmtDateCourt(b.dateDebut)}.`);
+    } else {
+      const lendemain = ajouterJoursISO(a.dateFin, 1);
+      if (lendemain < b.dateDebut) {
+        problemes.push(`Trou du ${fmtDateCourt(lendemain)} au ${fmtDateCourt(ajouterJoursISO(b.dateDebut, -1))} : aucune activité programmée.`);
+      }
+    }
+  }
+  return problemes;
+}
+
+function fmtDateCourt(iso) {
+  if (!iso) return "";
+  return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR");
+}
+
 // ---------- Écran : Assistant de rentrée ----------
 function AssistantRentreeScreen({ etablissement, setEtablissement, edt, setEdt, classes, codeProf, statutSync, onActiverSync, onDesactiverSync }) {
   const [nomEtab, setNomEtab] = useState(etablissement.nom || "");
@@ -3856,7 +3969,7 @@ function AssistantRentreeScreen({ etablissement, setEtablissement, edt, setEdt, 
   );
 }
 
-function EmploiDuTempsScreen({ classes, edt, setEdt }) {
+function EmploiDuTempsScreen({ classes, edt, setEdt, onOpenCycles }) {
   const [formOuvert, setFormOuvert] = useState(false);
   const [creneauEnEdition, setCreneauEnEdition] = useState(null);
   const [photoEnEdition, setPhotoEnEdition] = useState(null);
@@ -3864,14 +3977,9 @@ function EmploiDuTempsScreen({ classes, edt, setEdt }) {
   const creneauxParJour = (jour) => [...edt.creneaux.filter((c) => c.jour === jour)].sort((a, b) => heureEnMinutes(a.heureDebut) - heureEnMinutes(b.heureDebut));
 
   const nomClasse = (id) => classes.find((c) => c.id === id)?.nom || "?";
-  const activiteActuelle = (id) => {
-    const c = classes.find((c) => c.id === id);
-    return c?.cycles[c.cycles.length - 1]?.activite || "";
-  };
 
   const creerCreneau = ({ jour, heureDebut, heureFin, classeId, activite, titre, semaine }) => {
-    const acti = classeId ? (activite || activiteActuelle(classeId)) : "";
-    setEdt({ ...edt, creneaux: [...edt.creneaux, { id: uid(), jour, heureDebut, heureFin, classeId: classeId || null, activite: acti, titre: titre || "", semaine: semaine || null }] });
+    setEdt({ ...edt, creneaux: [...edt.creneaux, { id: uid(), jour, heureDebut, heureFin, classeId: classeId || null, activite: activite || "", titre: titre || "", semaine: semaine || null }] });
     setFormOuvert(false);
   };
   const modifierCreneau = ({ jour, heureDebut, heureFin, classeId, activite, titre, semaine }) => {
@@ -3912,7 +4020,7 @@ function EmploiDuTempsScreen({ classes, edt, setEdt }) {
           const classe = classes.find((c) => normaliser(c.nom) === classeTxt);
           const activite = getVal(["activite", "activité"]);
           if (jourCle && heureDebut && heureFin && classe) {
-            nouveaux.push({ id: uid(), jour: jourCle, heureDebut, heureFin, classeId: classe.id, activite: activite || activiteActuelle(classe.id) });
+            nouveaux.push({ id: uid(), jour: jourCle, heureDebut, heureFin, classeId: classe.id, activite: activite || "" });
           }
         });
         setEdt((e) => ({ ...e, creneaux: [...e.creneaux, ...nouveaux] }));
@@ -3932,6 +4040,10 @@ function EmploiDuTempsScreen({ classes, edt, setEdt }) {
           <Upload size={14} /> Importer
         </label>
       </div>
+
+      <button onClick={onOpenCycles} style={{ width: "100%", marginBottom: 16, padding: "10px 0", borderRadius: 10, border: `1px solid ${LINE}`, background: CARD, color: ACCENT, fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <RefreshCw size={14} /> Création de Cycles
+      </button>
 
       <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "9px 0", borderRadius: 10, border: `1.5px dashed ${LINE}`, color: "var(--muted-soft)", fontSize: 12, cursor: "pointer", marginBottom: 16 }}>
         <input type="file" accept="image/*" capture="environment" onChange={(e) => e.target.files[0] && declencherPhoto(e.target.files[0])} style={{ display: "none" }} />
@@ -3962,7 +4074,7 @@ function EmploiDuTempsScreen({ classes, edt, setEdt }) {
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted-soft)" }}>
-                    {c.classeId ? c.activite : ""}
+                    {c.classeId ? activiteEffectivePourCreneau(classes.find((x) => x.id === c.classeId), c, todayISO()) : ""}
                   </div>
                 </div>
                 <button onClick={(e) => { e.stopPropagation(); supprimerCreneau(c.id); }} style={{ border: "none", background: "none", color: "var(--st-absent-c)", cursor: "pointer" }}>
@@ -3997,6 +4109,263 @@ function EmploiDuTempsScreen({ classes, edt, setEdt }) {
       {photoEnEdition && (
         <PhotoEditModal dataUrl={photoEnEdition} onCancel={() => setPhotoEnEdition(null)} onConfirm={confirmerPhoto} />
       )}
+    </div>
+  );
+}
+
+// ---------- Écran : Création de Cycles (activités par classe/groupe classe, dans le temps) ----------
+function CyclesScreen({ classes, updateClasse, edt }) {
+  const [classeId, setClasseId] = useState(classes[0]?.id || "");
+  const [formOuvert, setFormOuvert] = useState(false);
+  const [cycleEnEdition, setCycleEnEdition] = useState(null);
+  const [dupliquerOuvert, setDupliquerOuvert] = useState(false);
+
+  const classe = classes.find((c) => c.id === classeId);
+  const creneauxClasse = [...(edt.creneaux || [])]
+    .filter((c) => c.classeId === classeId)
+    .sort((a, b) => (JOURS.findIndex((j) => j.key === a.jour) - JOURS.findIndex((j) => j.key === b.jour)) || heureEnMinutes(a.heureDebut) - heureEnMinutes(b.heureDebut));
+
+  const labelCreneau = (c) => `${JOURS.find((j) => j.key === c.jour)?.label || c.jour} ${c.heureDebut}–${c.heureFin}`;
+
+  const cyclesTries = classe ? [...classe.cycles].filter((c) => c.dateDebut).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut)) : [];
+  const problemes = classe ? detecterProblemesCycles(classe.cycles) : [];
+
+  const enregistrerCycle = (valeurs) => {
+    const { dateDebut, dateFin, activitePrincipale, activitesParCreneau } = valeurs;
+    const nouveauCycle = {
+      id: cycleEnEdition?.id || uid(),
+      dateDebut,
+      dateFin: dateFin || null,
+      activite: activitePrincipale,
+      activitesParCreneau: activitesParCreneau || {},
+    };
+    const cycles = cycleEnEdition
+      ? classe.cycles.map((c) => (c.id === cycleEnEdition.id ? nouveauCycle : c))
+      : [...classe.cycles, nouveauCycle];
+    updateClasse({ ...classe, cycles });
+    setFormOuvert(false);
+    setCycleEnEdition(null);
+  };
+
+  const supprimerCycle = (id) => {
+    if (classe.cycles.length <= 1) return;
+    updateClasse({ ...classe, cycles: classe.cycles.filter((c) => c.id !== id) });
+  };
+
+  const dupliquerVers = (ciblesIds) => {
+    const creneauxSource = creneauxClasse;
+    ciblesIds.forEach((cid) => {
+      const cible = classes.find((c) => c.id === cid);
+      if (!cible) return;
+      const creneauxCible = [...(edt.creneaux || [])]
+        .filter((c) => c.classeId === cid)
+        .sort((a, b) => (JOURS.findIndex((j) => j.key === a.jour) - JOURS.findIndex((j) => j.key === b.jour)) || heureEnMinutes(a.heureDebut) - heureEnMinutes(b.heureDebut));
+      const cyclesCopies = classe.cycles.map((cy) => {
+        const copie = { id: uid(), dateDebut: cy.dateDebut, dateFin: cy.dateFin || null, activite: cy.activite || "", activitesParCreneau: {} };
+        if (cy.activitesParCreneau) {
+          creneauxSource.forEach((cs, idx) => {
+            const val = cy.activitesParCreneau[cs.id];
+            const dest = creneauxCible[idx];
+            if (val && dest) copie.activitesParCreneau[dest.id] = val;
+          });
+        }
+        return copie;
+      });
+      updateClasse({ ...cible, cycles: cyclesCopies });
+    });
+    setDupliquerOuvert(false);
+  };
+
+  if (!classe) {
+    return <div style={{ padding: 30, textAlign: "center", color: "var(--muted-soft)" }}>Crée d'abord une classe ou un groupe classe.</div>;
+  }
+
+  return (
+    <div style={{ padding: 16, paddingBottom: 40 }}>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 4 }}>Classe / Groupe classe</div>
+        <select value={classeId} onChange={(e) => setClasseId(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 10, border: `1px solid ${LINE}`, fontSize: 14, background: CARD, color: INK }}>
+          {classes.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
+        </select>
+      </div>
+
+      {creneauxClasse.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted-soft)", background: "var(--faint)", borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>
+          Cette classe n'a aucun créneau dans l'emploi du temps pour le moment. Les cycles pourront quand même être créés, mais aucune activité ne s'affichera dans l'emploi du temps tant qu'un créneau n'y est pas rattaché.
+        </div>
+      )}
+      {creneauxClasse.length > 1 && (
+        <div style={{ fontSize: 12, color: PRIMARY, background: PRIMARY_SOFT, borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>
+          Cette classe a {creneauxClasse.length} séances par semaine ({creneauxClasse.map(labelCreneau).join(", ")}) : chaque cycle te proposera une activité par séance, modifiable indépendamment.
+        </div>
+      )}
+
+      {problemes.length > 0 && (
+        <div style={{ marginBottom: 14, border: `1px solid ${ACCENT}`, background: ACCENT_SOFT, borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: ACCENT, marginBottom: 4 }}>À vérifier</div>
+          {problemes.map((p, i) => (
+            <div key={i} style={{ fontSize: 11.5, color: ACCENT, marginBottom: 2 }}>• {p}</div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button onClick={() => { setCycleEnEdition(null); setFormOuvert(true); }} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: PRIMARY, color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Plus size={14} /> Ajouter un cycle
+        </button>
+        <button onClick={() => setDupliquerOuvert(true)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${LINE}`, background: CARD, color: PRIMARY, fontWeight: 600, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Upload size={14} style={{ transform: "rotate(90deg)" }} /> Dupliquer vers…
+        </button>
+      </div>
+
+      {cyclesTries.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "var(--muted-soft)", textAlign: "center", padding: "16px 0" }}>Aucun cycle programmé pour cette classe.</div>
+      ) : (
+        cyclesTries.map((cy) => (
+          <div key={cy.id} onClick={() => { setCycleEnEdition(cy); setFormOuvert(true); }} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 8, background: CARD, cursor: "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: INK }}>
+                Du {fmtDateCourt(cy.dateDebut)} {cy.dateFin ? `au ${fmtDateCourt(cy.dateFin)}` : "— jusqu'à nouvel ordre"}
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); supprimerCycle(cy.id); }} style={{ border: "none", background: "none", color: "var(--st-absent-c)", cursor: "pointer" }}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+            {creneauxClasse.length > 1 && cy.activitesParCreneau && Object.keys(cy.activitesParCreneau).length > 0 ? (
+              creneauxClasse.map((cr) => (
+                <div key={cr.id} style={{ fontSize: 11.5, color: "var(--muted-soft)" }}>{labelCreneau(cr)} : <b style={{ color: INK }}>{cy.activitesParCreneau[cr.id] || cy.activite || "—"}</b></div>
+              ))
+            ) : (
+              <div style={{ fontSize: 12, color: "var(--muted-soft)" }}>{cy.activite || "—"}</div>
+            )}
+          </div>
+        ))
+      )}
+
+      {formOuvert && (
+        <CycleFormModal
+          creneaux={creneauxClasse}
+          cycle={cycleEnEdition}
+          onClose={() => { setFormOuvert(false); setCycleEnEdition(null); }}
+          onSubmit={enregistrerCycle}
+        />
+      )}
+      {dupliquerOuvert && (
+        <DupliquerCyclesModal
+          classes={classes.filter((c) => c.id !== classeId)}
+          onClose={() => setDupliquerOuvert(false)}
+          onValider={dupliquerVers}
+        />
+      )}
+    </div>
+  );
+}
+
+function CycleFormModal({ creneaux, cycle, onClose, onSubmit }) {
+  const [dateDebut, setDateDebut] = useState(cycle?.dateDebut || todayISO());
+  const [sansFin, setSansFin] = useState(!cycle || !cycle.dateFin);
+  const [dateFin, setDateFin] = useState(cycle?.dateFin || "");
+  const [activitePrincipale, setActivitePrincipale] = useState(cycle?.activite || "");
+  const [activitesParCreneau, setActivitesParCreneau] = useState(cycle?.activitesParCreneau || {});
+
+  const plusieursCreneaux = creneaux.length > 1;
+  const labelCreneau = (c) => `${JOURS.find((j) => j.key === c.jour)?.label || c.jour} ${c.heureDebut}–${c.heureFin}`;
+
+  const changerActiviteCreneau = (id, val) => setActivitesParCreneau((prev) => ({ ...prev, [id]: val }));
+
+  const pretAEnvoyer = dateDebut && activitePrincipale.trim();
+
+  const valider = () => {
+    if (!pretAEnvoyer) return;
+    onSubmit({ dateDebut, dateFin: sansFin ? "" : dateFin, activitePrincipale: activitePrincipale.trim(), activitesParCreneau });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 440, maxHeight: "86vh", overflowY: "auto", background: CARD, borderRadius: "18px 18px 0 0", padding: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: INK }}>{cycle ? "Modifier le cycle" : "Nouveau cycle"}</div>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted-soft)" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 4 }}>Date de début<span style={{ color: "var(--st-absent-c)" }}> *</span></div>
+            <input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 10, border: `1px solid ${LINE}`, fontSize: 14, background: CARD, color: INK }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 4 }}>Date de fin</div>
+            <input type="date" disabled={sansFin} value={dateFin} onChange={(e) => setDateFin(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 10, border: `1px solid ${LINE}`, fontSize: 14, background: sansFin ? "var(--faint)" : CARD, color: INK }} />
+          </div>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16, fontSize: 12, color: "var(--muted-soft)", cursor: "pointer" }}>
+          <input type="checkbox" checked={sansFin} onChange={(e) => setSansFin(e.target.checked)} />
+          Pas de date de fin (jusqu'au prochain cycle ou nouvel ordre)
+        </label>
+
+        <div style={{ marginBottom: plusieursCreneaux ? 10 : 16 }}>
+          <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 4 }}>
+            {plusieursCreneaux ? "Activité par défaut" : "Activité"}<span style={{ color: "var(--st-absent-c)" }}> *</span>
+          </div>
+          <input value={activitePrincipale} onChange={(e) => setActivitePrincipale(e.target.value)} placeholder="ex : Badminton" style={{ width: "100%", padding: 10, borderRadius: 10, border: `1px solid ${LINE}`, fontSize: 14, background: CARD, color: INK }} />
+        </div>
+
+        {plusieursCreneaux && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 6 }}>Activité propre à chaque séance (laisser vide pour reprendre l'activité par défaut)</div>
+            {creneaux.map((c) => (
+              <div key={c.id} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: "var(--muted-soft)", marginBottom: 3 }}>{labelCreneau(c)}</div>
+                <input
+                  value={activitesParCreneau[c.id] || ""}
+                  onChange={(e) => changerActiviteCreneau(c.id, e.target.value)}
+                  placeholder={activitePrincipale || "reprend l'activité par défaut"}
+                  style={{ width: "100%", padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, fontSize: 13.5, background: CARD, color: INK }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={valider} disabled={!pretAEnvoyer} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", background: pretAEnvoyer ? PRIMARY : LINE, color: "#fff", fontWeight: 700, fontSize: 14, cursor: pretAEnvoyer ? "pointer" : "default" }}>
+          {cycle ? "Enregistrer" : "Ajouter"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DupliquerCyclesModal({ classes, onClose, onValider }) {
+  const [selection, setSelection] = useState([]);
+  const toggle = (id) => setSelection((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 440, maxHeight: "82vh", overflowY: "auto", background: CARD, borderRadius: "18px 18px 0 0", padding: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: INK }}>Dupliquer les cycles vers…</div>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--muted-soft)" }}><X size={20} /></button>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted-soft)", marginBottom: 14 }}>
+          Les dates et activités seront copiées telles quelles, puis resteront modifiables indépendamment sur chaque classe choisie. Cela remplace les cycles déjà existants sur ces classes.
+        </div>
+        {classes.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: "var(--muted-soft)", textAlign: "center", padding: "16px 0" }}>Aucune autre classe disponible.</div>
+        ) : (
+          classes.map((c) => (
+            <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 4px", borderBottom: `1px solid ${LINE}`, cursor: "pointer" }}>
+              <input type="checkbox" checked={selection.includes(c.id)} onChange={() => toggle(c.id)} />
+              <span style={{ fontSize: 13.5, color: INK }}>{c.nom}</span>
+            </label>
+          ))
+        )}
+        <button
+          onClick={() => selection.length > 0 && onValider(selection)}
+          disabled={selection.length === 0}
+          style={{ width: "100%", marginTop: 16, padding: "12px 0", borderRadius: 12, border: "none", background: selection.length > 0 ? PRIMARY : LINE, color: "#fff", fontWeight: 700, fontSize: 14, cursor: selection.length > 0 ? "pointer" : "default" }}
+        >
+          Dupliquer vers {selection.length || ""} classe(s)
+        </button>
+      </div>
     </div>
   );
 }
@@ -5033,7 +5402,10 @@ export default function EpsPro() {
     );
   } else if (current?.screen === "edt") {
     title = "Emploi du temps";
-    body = <EmploiDuTempsScreen classes={classes} edt={edt} setEdt={setEdt} />;
+    body = <EmploiDuTempsScreen classes={classes} edt={edt} setEdt={setEdt} onOpenCycles={() => push("cycles", {})} />;
+  } else if (current?.screen === "cycles") {
+    title = "Création de Cycles";
+    body = <CyclesScreen classes={classes} updateClasse={updateClasse} edt={edt} />;
   } else if (current?.screen === "assistantRentree") {
     title = "Assistant de rentrée";
     body = <AssistantRentreeScreen etablissement={etablissement} setEtablissement={setEtablissement} edt={edt} setEdt={setEdt} classes={classes} codeProf={codeProf} statutSync={statutSync} onActiverSync={activerSynchronisation} onDesactiverSync={desactiverSynchronisation} />;
